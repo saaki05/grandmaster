@@ -1,7 +1,7 @@
 import os
 import tempfile
 
-from wal import WriteAheadLog
+from lsmkv.wal import WriteAheadLog
 
 
 def test_append_and_replay():

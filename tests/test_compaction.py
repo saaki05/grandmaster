@@ -1,11 +1,11 @@
+import os
 import shutil
 import tempfile
-import os
 
 import pytest
 
-from sstable import SSTable
-from compaction import compact
+from lsmkv.compaction import compact
+from lsmkv.sstable import SSTable
 
 
 @pytest.fixture
