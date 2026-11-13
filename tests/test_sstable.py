@@ -1,10 +1,10 @@
+import os
 import shutil
 import tempfile
-import os
 
 import pytest
 
-from lsmkv.sstable import SSTable, _MISSING
+from lsmkv.sstable import _MISSING, SSTable
 
 
 @pytest.fixture

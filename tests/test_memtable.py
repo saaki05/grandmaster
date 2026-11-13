@@ -1,4 +1,4 @@
-from lsmkv.memtable import MemTable, _MISSING
+from lsmkv.memtable import _MISSING, MemTable
 
 
 def test_put_and_get():

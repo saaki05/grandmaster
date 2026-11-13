@@ -3,12 +3,12 @@ import os
 import re
 from itertools import groupby
 
-from .wal import WriteAheadLog
-from .memtable import MemTable, _MISSING
-from .sstable import SSTable
 from .compaction import compact
 from .fsutil import fsync_dir
 from .manifest import Manifest
+from .memtable import _MISSING, MemTable
+from .sstable import SSTable
+from .wal import WriteAheadLog
 
 _SSTABLE_NAME_RE = re.compile(r"^sstable_(\d+)$")
 
