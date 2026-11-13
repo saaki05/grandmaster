@@ -4,8 +4,8 @@ import os
 
 import pytest
 
-from sstable import SSTable
-from compaction import compact
+from lsmkv.sstable import SSTable
+from lsmkv.compaction import compact
 
 
 @pytest.fixture

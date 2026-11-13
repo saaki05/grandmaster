@@ -1,6 +1,6 @@
 import argparse
 
-from store import KVStore
+from lsmkv.store import KVStore
 
 
 def main():

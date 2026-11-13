@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from store import KVStore
+from lsmkv.store import KVStore
 
 
 @pytest.fixture

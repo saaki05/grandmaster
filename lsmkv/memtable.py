@@ -1,4 +1,4 @@
-from sentinel import MISSING as _MISSING
+from .sentinel import MISSING as _MISSING
 
 
 class MemTable:

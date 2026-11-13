@@ -1,10 +1,10 @@
 import os
 import re
 
-from wal import WriteAheadLog
-from memtable import MemTable, _MISSING
-from sstable import SSTable
-from compaction import compact
+from .wal import WriteAheadLog
+from .memtable import MemTable, _MISSING
+from .sstable import SSTable
+from .compaction import compact
 
 _SSTABLE_NAME_RE = re.compile(r"^sstable_(\d+)$")
 

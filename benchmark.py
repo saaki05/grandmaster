@@ -4,7 +4,7 @@ import string
 import tempfile
 import time
 
-from store import KVStore
+from lsmkv.store import KVStore
 
 
 def random_key(n=12):

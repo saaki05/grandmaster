@@ -2,8 +2,8 @@ import bisect
 import json
 import os
 
-from bloom_filter import BloomFilter
-from sentinel import MISSING as _MISSING
+from .bloom_filter import BloomFilter
+from .sentinel import MISSING as _MISSING
 
 INDEX_INTERVAL = 4  # every Nth key gets a sparse index entry, trading memory for lookup speed
 

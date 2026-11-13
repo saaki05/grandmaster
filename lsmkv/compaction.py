@@ -2,7 +2,7 @@ import heapq
 from itertools import groupby
 from operator import itemgetter
 
-from sstable import SSTable
+from .sstable import SSTable
 
 
 def compact(sstables, output_base_path: str, drop_tombstones: bool = True) -> SSTable:

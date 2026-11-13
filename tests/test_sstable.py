@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from sstable import SSTable, _MISSING
+from lsmkv.sstable import SSTable, _MISSING
 
 
 @pytest.fixture

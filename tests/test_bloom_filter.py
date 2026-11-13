@@ -1,7 +1,7 @@
 import string
 import random
 
-from bloom_filter import BloomFilter
+from lsmkv.bloom_filter import BloomFilter
 
 
 def test_no_false_negatives():
