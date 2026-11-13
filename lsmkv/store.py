@@ -1,10 +1,14 @@
+import heapq
 import os
 import re
+from itertools import groupby
 
 from .wal import WriteAheadLog
 from .memtable import MemTable, _MISSING
 from .sstable import SSTable
 from .compaction import compact
+from .fsutil import fsync_dir
+from .manifest import Manifest
 
 _SSTABLE_NAME_RE = re.compile(r"^sstable_(\d+)$")
 
@@ -26,31 +30,47 @@ class KVStore:
         self.memtable_limit = memtable_limit
         os.makedirs(data_dir, exist_ok=True)
 
+        self.manifest = Manifest(data_dir)
         self.wal = WriteAheadLog(os.path.join(data_dir, "wal.log"))
         self.memtable = MemTable()
-        self.sstables = self._discover_sstables()
-        self._next_sstable_id = self._max_sstable_id() + 1
+        self.sstables = self._open_sstables()
+        self._next_sstable_id = max(self._table_ids(), default=0) + 1
 
         self._recover()
 
-    def _discover_sstables(self):
-        ids = sorted(self._max_sstable_id_list())
-        return [
-            SSTable(os.path.join(self.data_dir, f"sstable_{i}"))
-            for i in ids
-        ]
+    def _path_for(self, table_id: int) -> str:
+        return os.path.join(self.data_dir, f"sstable_{table_id}")
 
-    def _max_sstable_id_list(self):
-        ids = []
+    def _ids_on_disk(self) -> list[int]:
+        ids = set()
         for name in os.listdir(self.data_dir):
             match = _SSTABLE_NAME_RE.match(name.split(".")[0])
             if match:
-                ids.append(int(match.group(1)))
-        return sorted(set(ids))
+                ids.add(int(match.group(1)))
+        return sorted(ids)
 
-    def _max_sstable_id(self) -> int:
-        ids = self._max_sstable_id_list()
-        return max(ids) if ids else 0
+    def _table_ids(self) -> list[int]:
+        return [int(_SSTABLE_NAME_RE.match(os.path.basename(t.base_path)).group(1))
+                for t in self.sstables]
+
+    def _open_sstables(self):
+        """Load the tables named by the manifest and remove everything else.
+
+        A directory written before the manifest existed is adopted: every table
+        with all three files present is kept and a manifest is written.
+        """
+        on_disk = self._ids_on_disk()
+        if self.manifest.exists():
+            live = self.manifest.load()
+        else:
+            live = [i for i in on_disk if SSTable(self._path_for(i)).is_complete()]
+            self.manifest.save(live)
+        for orphan in set(on_disk) - set(live):
+            SSTable(self._path_for(orphan)).delete_files()
+        tmp = self.manifest.path + ".tmp"
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        return [SSTable(self._path_for(i)) for i in sorted(live)]
 
     def _recover(self):
         for op in self.wal.replay():
@@ -85,11 +105,44 @@ class KVStore:
         if len(self.memtable) >= self.memtable_limit:
             self.flush()
 
+    def scan(self, start=None, end=None):
+        """Yield (key, value) in key order for start <= key < end.
+
+        Sources are merged newest-first, so for each key only the most recent
+        version is seen; tombstones hide older values and are not returned.
+        """
+        def bounded(items, rank):
+            for key, value in items:
+                if end is not None and key >= end:
+                    return
+                yield key, rank, value
+
+        mem = [(k, v) for k, v in self.memtable.sorted_items()
+               if start is None or k >= start]
+        sources = [bounded(mem, 0)]
+        for rank, table in enumerate(reversed(self.sstables), start=1):
+            sources.append(bounded(table.iter_from(start), rank))
+
+        merged = heapq.merge(*sources, key=lambda item: (item[0], item[1]))
+        for key, versions in groupby(merged, key=lambda item: item[0]):
+            _, _, value = next(versions)  # lowest rank = newest
+            if value is not None:
+                yield key, value
+
     def flush(self):
+        """Write the memtable to a new SSTable.
+
+        Order matters for crash safety: the table is fsynced, then the manifest
+        names it, and only then is the log cleared. A crash before the manifest
+        swap leaves the log intact; a crash after it replays operations that
+        are already in the table, which is harmless.
+        """
         if self.memtable.is_empty():
             return None
-        base_path = os.path.join(self.data_dir, f"sstable_{self._next_sstable_id}")
-        table = SSTable.write(base_path, self.memtable.sorted_items())
+        table_id = self._next_sstable_id
+        table = SSTable.write(self._path_for(table_id), self.memtable.sorted_items())
+        fsync_dir(self.data_dir)
+        self.manifest.save(self._table_ids() + [table_id])
         self.sstables.append(table)
         self._next_sstable_id += 1
         self.memtable.clear()
@@ -97,14 +150,22 @@ class KVStore:
         return table
 
     def compact(self):
+        """Merge every SSTable into one and drop tombstones.
+
+        The merged table becomes visible only when the manifest swap succeeds.
+        Old files are removed afterwards; if that is interrupted, the next open
+        removes them because the manifest no longer names them.
+        """
         self.flush()
         if len(self.sstables) <= 1:
             return
-        base_path = os.path.join(self.data_dir, f"sstable_{self._next_sstable_id}")
-        merged = compact(self.sstables, base_path, drop_tombstones=True)
+        table_id = self._next_sstable_id
+        self._next_sstable_id += 1
+        merged = compact(self.sstables, self._path_for(table_id), drop_tombstones=True)
+        fsync_dir(self.data_dir)
+        self.manifest.save([table_id])
         old_tables = self.sstables
         self.sstables = [merged]
-        self._next_sstable_id += 1
         for table in old_tables:
             table.delete_files()
 
